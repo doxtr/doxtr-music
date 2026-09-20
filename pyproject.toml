@@ -1,0 +1,94 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "doxtr-music"
+dynamic = ["version"]
+authors = [{ name = "Doxtr" }]
+description = "Sheet music (chords + lyrics) for Sphinx docs: HTML, LaTeX/PDF and ePub."
+readme = "README.md"
+requires-python = ">=3.8"
+dependencies = [
+    "sphinx>=5.0",
+    "Jinja2>=3.0"
+]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Framework :: Sphinx :: Extension",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+
+[project.urls]
+"Homepage" = "https://github.com/doxtr/doxtr-music"
+"Repository" = "https://github.com/doxtr/doxtr-music"
+"Changelog" = "https://github.com/doxtr/doxtr-music/blob/main/CHANGELOG.md"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+    "doc8>=1.0.0",
+]
+clipboard = [
+    "pyperclip>=1.8",
+]
+# MusicXML import (CHUNK-6-1) parses UNTRUSTED external XML; defusedxml is a
+# hard requirement of that feature (XXE / billion-laughs / entity-bomb safe).
+# It is a SOFT/optional dependency — never in install_requires. Install with
+# `pip install doxtr-music[musicxml]`.
+musicxml = [
+    "defusedxml>=0.7",
+]
+# Convenience bundle of every optional import/IO extra (MusicXML + clipboard).
+# Still soft: none of these are in ``install_requires``.
+all = [
+    "defusedxml>=0.7",
+    "pyperclip>=1.8",
+]
+
+[project.scripts]
+# CHUNK-6-3 activates the CLI: doxtr_music/cli.py exposes main(argv=None) -> int.
+# setuptools resolves scripts from static metadata (does not import cli), so
+# `python -m build` still succeeds.
+doxtr-music-convert = "doxtr_music.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["doxtr_music*"]
+
+[tool.setuptools.dynamic]
+# __version__ must stay a literal string: setuptools AST-resolves this
+# attr at build time; a non-literal (computed) value breaks isolated builds.
+version = {attr = "doxtr_music.__version__"}
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.package-data]
+doxtr_music = [
+    # Flat CSS asset (CHUNK-1-4) + LaTeX backend templates (CHUNK-2-1).
+    "static/*",
+    "latex_backends/*.tex_t",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["test_harness", "tests"]
+python_files = ["test_*.py"]
+python_functions = ["test_*"]
+markers = [
+    "integration: marks tests that run a full Sphinx build (deselect with '-m \"not integration\"')",
+    "latex: marks tests that invoke a real TeX toolchain (pdflatex)",
+    "slow: marks slow/integration tests (e.g. wheel builds); gateable",
+]
+
+[tool.coverage.run]
+source = ["doxtr_music"]
+omit = ["*/test_*", "*/conf*.py"]
+
+[tool.coverage.report]
+show_missing = true
+# Coverage gate (CHUNK-7-2). The full suite (unit + harness) measures ~93%;
+# 90 is a real regression gate with a small headroom margin. CI mirrors this
+# via ``pytest --cov-fail-under=90`` in test.yml (the two must stay aligned).
+fail_under = 90

@@ -1,0 +1,66 @@
+/* doxtr-music EPUB styles (CHUNK-2-2: reflow-safe <pre> chord/lyric rows)
+ *
+ * EPUB is a first-class output. Unlike the HTML path (which positions chords
+ * absolutely above each lyric line), EPUB renders each line as a fixed-width
+ * <pre> with a chord row above a lyric row, aligned by monospace character
+ * cells. Because both rows are monospace text, alignment survives an e-reader
+ * font resize (reflow-safe).
+ *
+ * This is the EPUB builder's OWN minimal stylesheet — NOT the HTML
+ * absolute-positioning CSS. There is deliberately no position:absolute here
+ * (the copy/markup contract forbids absolute-positioned chords in EPUB).
+ */
+
+.doxtr-song-epub {
+   margin-block: 1.5em;
+}
+
+.doxtr-song-epub .doxtr-song-title {
+   font-weight: bold;
+   margin-block-end: 0.5em;
+}
+
+.doxtr-song-epub .doxtr-section {
+   margin-block: 1em;
+}
+
+.doxtr-song-epub .doxtr-section-label {
+   font-style: italic;
+   font-weight: bold;
+   margin-block-end: 0.25em;
+}
+
+/* Each song line is a fixed-width <pre>: monospace, preserve spacing, and let
+ * the chord row wrap onto its own visual line above the lyric row. */
+.doxtr-line-epub {
+   font-family: monospace, monospace;
+   white-space: pre;
+   margin: 0;
+   line-height: 1.3;
+}
+
+/* Chord row: presentational, non-selectable (a separate run above lyrics). */
+.doxtr-line-epub .doxtr-chordrow {
+   font-weight: bold;
+   user-select: none;
+   -webkit-user-select: none;
+}
+
+/* Lyric row: the selectable, copyable stream (NOT user-select:none). */
+.doxtr-line-epub .doxtr-lyricrow {
+   user-select: text;
+}
+
+/* Inline prose roles (CHUNK-3-5): :chord:/:key:/:roman: rendered inline (NOT in
+ * the two-row song <pre>). Ordinary readable, selectable prose text. */
+.doxtr-chord-inline {
+   font-weight: bold;
+}
+
+.doxtr-key {
+   font-weight: bold;
+}
+
+.doxtr-roman {
+   font-variant: small-caps;
+}

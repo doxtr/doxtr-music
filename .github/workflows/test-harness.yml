@@ -1,0 +1,101 @@
+name: Test Harness
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test-harness:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Free disk space
+        uses: jlumbroso/free-disk-space@v1.3.1
+        with:
+          tool-cache: false
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: false
+          swap-storage: true
+
+      - uses: actions/checkout@v6
+      
+      - name: Pull container image
+        run: docker pull doxtr/reactor:0.1.5
+
+      - name: Run test harness
+        run: |
+          docker run --rm \
+            -v ${{ github.workspace }}:/workspaces/docs \
+            -w /workspaces/docs \
+            doxtr/reactor:0.1.5 \
+            bash -c '
+              pip install -e /workspaces/docs &&
+              cd test_harness &&
+              python test_runner.py --fail-on-pending
+            '
+
+      - name: Run unit tests (coverage-gated, in-reactor)
+        # This in-reactor job is the AUTHORITATIVE coverage gate: it runs where
+        # the TeX toolchain (pdflatex) and full build deps exist, so the
+        # `latex`- and `slow`-marked tests (real pdflatex compile, wheel build)
+        # actually execute instead of skipping. test.yml stays a fast bare
+        # build+import smoke and does NOT own the gate (see FINDING D).
+        run: |
+          docker run --rm \
+            -v ${{ github.workspace }}:/workspaces/docs \
+            -w /workspaces/docs \
+            doxtr/reactor:0.1.5 \
+            bash -c '
+              pip install -e /workspaces/docs &&
+              pip install pytest pytest-cov defusedxml &&
+              python -m pytest test_harness/ tests/ -v --tb=short -m slow &&
+              python -m pytest test_harness/ tests/ -v --tb=short \
+                --cov=doxtr_music --cov-report=term-missing --cov-fail-under=90
+            '
+      
+      - name: Upload Report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-report
+          path: |
+            test_harness/build/reports/
+            test_harness/build/latex/
+
+  doc8-check:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Free disk space
+        uses: jlumbroso/free-disk-space@v1.3.1
+        with:
+          tool-cache: false
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: false
+          swap-storage: true
+
+      - uses: actions/checkout@v6
+
+      - name: Pull container image
+        run: docker pull doxtr/reactor:0.1.5
+      
+      - name: Run doc8 on RST files
+        run: |
+          docker run --rm \
+            -v ${{ github.workspace }}:/workspaces/docs \
+            -w /workspaces/docs/test_harness \
+            doxtr/reactor:0.1.5 \
+            bash -c 'for f in source/_test_cases/*.rst; do
+                echo "Checking $f..."
+                doc8 --config .doc8.ini "$f" || exit 1
+              done
+              echo "All RST files valid!"
+            '

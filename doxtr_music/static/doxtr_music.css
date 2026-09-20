@@ -1,0 +1,155 @@
+/* doxtr-music styles (CHUNK-1-4: copy-safe chord/lyric HTML)
+ *
+ * Copy-safety + i18n model (LOCKED):
+ *   - Chords are real inline text spans (.doxtr-chord) carrying the chord glyph
+ *     as text, positioned ABOVE the lyric line and marked user-select:none so
+ *     selecting/copying a song yields the lyric stream only.
+ *   - Lyrics (.doxtr-lyric) flow normally and are selectable.
+ *   - Alignment uses CSS LOGICAL properties only (inset-inline-start,
+ *     text-align:start, margin-inline-*) — never physical left/right — so
+ *     CHUNK-3-4 can flip to RTL via dir="rtl" on .doxtr-song without rewriting
+ *     these rules. .doxtr-song / .doxtr-line / .doxtr-chord are a reserved
+ *     class API for CHUNK-3-4 / 4-1 / 4-2.
+ *
+ * EPUB note: absolute positioning is reflow-fragile; CHUNK-2-2 may fully
+ * override the HTML visitors for EPUB with a <pre>/SVG fallback.
+ */
+
+.doxtr-song {
+   text-align: start;
+   margin-block: 1.5em;
+}
+
+.doxtr-song-title {
+   font-weight: bold;
+   margin-block-end: 0.5em;
+}
+
+.doxtr-section {
+   margin-block: 1em;
+}
+
+.doxtr-section-label {
+   font-style: italic;
+   font-weight: bold;
+   margin-block-end: 0.25em;
+}
+
+/* Section body wrapper: carries per-section-kind body styling (font/size/
+   color/background). Transparent by default so it inherits the surrounding
+   document style until a theme or config styles it. */
+.doxtr-section-body {
+   /* no default styling; a hook for section-body typography */
+}
+
+/* Song-metadata block: title/key/tempo/… rendered as label/value rows. The
+   generic ".doxtr-song-meta" and per-key ".doxtr-song-meta-<key>" classes are
+   the styling targets; per-key typography rides an inline style. */
+.doxtr-song-meta-list {
+   margin-block: 0.25em 0.75em;
+}
+
+.doxtr-song-meta {
+   display: flex;
+   gap: 0.4em;
+   margin: 0;
+}
+
+.doxtr-song-meta-label {
+   font-weight: bold;
+   margin: 0;
+}
+
+.doxtr-song-meta-label::after {
+   content: ":";
+}
+
+.doxtr-song-meta-value {
+   margin: 0;
+}
+
+/* Each line is the positioning context for its chords, which sit above it. */
+.doxtr-line {
+   position: relative;
+   margin-block-start: 1.6em;
+   line-height: 1.4;
+   white-space: pre-wrap;
+}
+
+/* Chords: real text, non-selectable, positioned above the lyric line. */
+.doxtr-chord {
+   position: absolute;
+   inset-block-start: -1.2em;
+   inset-inline-start: 0;
+   user-select: none;
+   -webkit-user-select: none;
+   -moz-user-select: none;
+   -ms-user-select: none;
+   font-weight: bold;
+   font-size: 0.85em;
+   white-space: nowrap;
+}
+
+/* Lyrics: normal flow, selectable — the only copyable inline content. */
+.doxtr-lyric {
+   user-select: text;
+}
+
+/* Singer wrapper: transparent to text flow; color added in CHUNK-4-2. */
+.doxtr-singer {
+}
+
+/* Inline prose roles (CHUNK-3-5): :chord:/:key:/:roman: for natural prose.
+ * DISTINCT from the positioned song chord: an inline .doxtr-chord-inline chord
+ * is ordinary readable, SELECTABLE text (no absolute positioning, no
+ * user-select:none, no aria-hidden) so the song-chord CSS never leaks onto
+ * prose chords. Logical properties only (no physical left/right). */
+.doxtr-chord-inline {
+   font-weight: bold;
+}
+
+.doxtr-key {
+   font-weight: bold;
+}
+
+.doxtr-roman {
+   font-variant: small-caps;
+}
+
+/* CHUNK-4-3 WCAG 2.1 AA accessibility.
+ *
+ * The visible non-color multi-singer cue (WCAG 1.4.1 Use of Color): a small
+ * bold badge (e.g. "A:") so sighted color-blind users distinguish singer runs
+ * without relying on color. It lives INSIDE the .doxtr-singer wrapper, which
+ * the copy-safe DOM-strip removes, so the copied lyric stream excludes it. */
+.doxtr-singer-cue {
+   font-weight: bold;
+   margin-inline-end: 0.25em;
+   user-select: none;
+}
+
+/* Visually-hidden text (SR-only labels + EPUB chord<->word alternatives). It
+ * deliberately AVOIDS position:absolute so the EPUB reflow-safe render stays
+ * absolute-positioning-free; clip-path + a 1px box hides it for sighted users
+ * while screen readers still announce it. */
+.doxtr-sr-only {
+   clip-path: inset(50%);
+   width: 1px;
+   height: 1px;
+   overflow: hidden;
+   white-space: nowrap;
+   display: inline-block;
+}
+
+/* Chord-progression grid (CHUNK-4-4): a genuine semantic data table (chords /
+ * roman numerals, no lyrics). No fixed pixel width so a wide grid wraps/scrolls
+ * acceptably on narrow viewports (EPUB reflow-safe). */
+.doxtr-progression {
+   border-collapse: collapse;
+   margin: 0.5em 0;
+}
+.doxtr-progression-cell {
+   border: 1px solid currentColor;
+   padding: 0.15em 0.6em;
+   text-align: center;
+}

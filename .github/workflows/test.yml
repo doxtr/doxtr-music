@@ -1,0 +1,36 @@
+name: Test
+
+# Fast bare build + import smoke ONLY. This runner has NO TeX toolchain, so
+# the `latex`/`slow`-marked tests (real pdflatex compile, wheel build) would
+# silently SKIP here and the coverage number would be misleading. The
+# AUTHORITATIVE coverage gate (--cov-fail-under=90) runs in-reactor in
+# test-harness.yml, where pdflatex exists and those marks actually execute
+# (see FINDING D). Keep this job lightweight; do not add the coverage gate here.
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v6
+    - name: Set up Python
+      uses: actions/setup-python@v6
+      with:
+        python-version: "3.x"
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install build
+    - name: Build Package
+      run: python -m build
+    - name: Install package
+      run: pip install -e .
+    - name: Install test dependencies
+      run: pip install pytest defusedxml
+    - name: Smoke tests (no coverage gate; latex/slow marks skip here by design)
+      run: python -m pytest tests/ test_harness/ -q -m "not slow"

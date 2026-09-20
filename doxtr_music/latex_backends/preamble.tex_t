@@ -1,0 +1,70 @@
+% doxtr-music preamble v1
+%
+% Rendered by sphinx.util.template.LaTeXRenderer (JSP-style print delimiters).
+% Context variables:
+%   backend_fragment  -- the rendered <name>.tex_t backend fragment (string)
+%
+% This skeleton is the single composition point for the LaTeX output:
+%   1. \usepackage{needspace}  -- page-break guard used by \dmneedspace
+%   2. Typography indirection defaults (global \dmXcolor/\dmXfont/\dmXsize).
+%      CHUNK-4-1 overrides the globals via a higher-priority preamble
+%      contributor; a per-song scoped group \def's only the overridden ones.
+%   3. Backend-neutral \dm... macros defined in terms of those style macros.
+%   4. The backend fragment, which maps the section macros onto its package's
+%      environments (songs.sty / songbook.sty) -- genuinely exchangeable.
+%
+\usepackage{needspace}
+\usepackage{xcolor}
+%
+% ---- Typography indirection layer (globals; CHUNK-4-1 redefines) -----------
+% Each styleable element reads a color/font/size macro so a per-song scoped
+% group can override a single attribute while inheriting the rest.
+\providecommand{\dmchordcolor}{\relax}
+\providecommand{\dmchordfont}{\relax}
+\providecommand{\dmchordsize}{\relax}
+\providecommand{\dmlyriccolor}{\relax}
+\providecommand{\dmlyricfont}{\relax}
+\providecommand{\dmlyricsize}{\relax}
+\providecommand{\dmromancolor}{\relax}
+\providecommand{\dmromanfont}{\relax}
+\providecommand{\dmromansize}{\relax}
+\providecommand{\dmtitlecolor}{\relax}
+\providecommand{\dmtitlefont}{\bfseries}
+\providecommand{\dmtitlesize}{\relax}
+\providecommand{\dmmetacolor}{\relax}
+\providecommand{\dmmetafont}{\itshape}
+\providecommand{\dmmetasize}{\relax}
+%
+% ---- Page-break guard (overridable; relative to \baselineskip) -------------
+% CHUNK-2-1 emits \dmneedspace before each song/section block. Relative to
+% \baselineskip so CHUNK-4-1 typography changes never invalidate it.
+\providecommand{\dmneedspace}{\needspace{4\baselineskip}}
+%
+% ---- Backend-neutral content macros ----------------------------------------
+% \dmchord{<chord>}{<lyric-fragment>}: a chord positioned over a lyric run.
+% Default (backend-agnostic) rendering stacks the chord above the fragment.
+\providecommand{\dmlyric}[1]{{\dmlyriccolor\dmlyricfont\dmlyricsize #1}}
+\providecommand{\dmchord}[2]{%
+  \mbox{\ooalign{%
+    {\dmchordcolor\dmchordfont\dmchordsize\raisebox{1.2em}{#1}}\cr
+    {\dmlyric{#2}}\cr}}%
+}
+% \dmroman{<numeral>}: a standalone roman numeral (RomanNode / :roman: role).
+\providecommand{\dmroman}[1]{{\dmromancolor\dmromanfont\dmromansize #1}}
+% \dmchordroman{<chord>}{<roman>}{<lyric>}: chord displayed with its roman.
+\providecommand{\dmchordroman}[3]{%
+  \mbox{\ooalign{%
+    {\dmchordcolor\dmchordfont\dmchordsize\raisebox{1.2em}{#1\,\dmroman{#2}}}\cr
+    {\dmlyric{#3}}\cr}}%
+}
+% \dmsinger{<id>}{<content>}: default no-op passthrough. CHUNK-4-2 supplies
+% the color map by redefining this. Must compose with \dmchord.
+\providecommand{\dmsinger}[2]{#2}
+% \dmtitle{<text>} / \dmmeta{<text>}: song title + metadata hooks.
+\providecommand{\dmtitle}[1]{{\dmtitlecolor\dmtitlefont\dmtitlesize #1}\par}
+\providecommand{\dmmeta}[1]{{\dmmetacolor\dmmetafont\dmmetasize #1}\par}
+%
+% ---- Backend fragment (section-macro mapping onto the chosen package) ------
+<%= backend_fragment %>
+%
+% end doxtr-music preamble v1

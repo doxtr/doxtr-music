@@ -1,0 +1,54 @@
+% doxtr-music backend fragment: songs
+%
+% Maps the backend-neutral \dmsection* macros onto lightweight, self-contained
+% wrappers. songs.sty's native \beginverse/\beginchorus require an enclosing
+% \begin{songs} ... \end{songs} block and \beginsong bookkeeping; the \dm...
+% contract is backend-neutral and must compile in a bare document, so this
+% fragment provides minimal wrappers rather than assuming the full environment.
+% A child theme may replace this fragment to route through songs.sty's
+% environment machinery.
+%
+% IMPORTANT (geometry safety): we do NOT ``\usepackage{songs}``. Like
+% songbook.sty, loading a full songbook package can alter the host document's
+% page layout and clash with the surrounding theme's geometry. This fragment
+% only uses its OWN \dm... wrappers (never a songs-native command), so the
+% package is not needed. A child theme that wants songs.sty's environments can
+% replace this fragment and load it there.
+%
+% \dmsectionbegin{<kind>}{<label>} / \dmsectionend{<kind>}
+%   kind in {verse, chorus, bridge, section, none}; label may be empty.
+%   A minimal verse-like wrapper (songs.sty requires an environment for its
+%   own verse macros, so we never emit "plain text" that could break).
+\providecommand{\dmsectionbegin}[2]{%
+  \par\dmneedspace
+  \begingroup
+  \def\dm@sectionkind{#1}%
+  \def\dm@sectionlabel{#2}%
+  \ifx\dm@sectionlabel\empty\else{\dmmeta{#2}}\fi
+}
+\providecommand{\dmsectionend}[1]{%
+  \endgroup\par
+}
+%
+% ---- Inline prose role macros (CHUNK-3-5, macro-contract extension) ---------
+% \dmchordinline{<chord>}: a chord in running prose (:chord: role). Unlike
+%   \dmchord it does NOT stack over a lyric or position absolutely — it is
+%   ordinary inline text reusing the chord typography indirection.
+% \dmkey{<key>}: a key name in running prose (:key: role).
+% (\dmroman for the :roman: role is defined in the preamble.)
+\providecommand{\dmchordinline}[1]{{\dmchordcolor\dmchordfont\dmchordsize #1}}
+\providecommand{\dmkey}[1]{{\dmtitlecolor\dmtitlefont\dmtitlesize #1}}
+%
+% ---- Multi-singer color hook (CHUNK-4-2, macro-contract extension) ----------
+% \dmsinger{<id>}{<content>}: vocal-part attribution. The WINNING per-run color
+%   (singer over typography, resolved in Python and emitted once) is applied by
+%   the LaTeX visitor scoping the run's indirection macros:
+%     \begingroup \def\dmchordcolor{\color{<c>}}\def\dmlyriccolor{\color{<c>}}
+%       <content> \endgroup
+%   so \dmchord/\dmlyric inside pick up the winner from their OWN indirection
+%   (never an outer \color losing to \dmchord's inner \dmchordcolor). This
+%   passthrough definition (in the preamble) keeps the backend neutral; a
+%   backend that wants a bare-text \color for non-macro run text may redefine
+%   \dmsinger here without breaking the run-indirection contract.
+%
+% end backend fragment: songs

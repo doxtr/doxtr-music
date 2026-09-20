@@ -1,0 +1,19 @@
+Song i18n — German Chord System
+===============================
+
+The same inline ChordPro song rendered with
+``doxtr_music_chord_system = "german"``. German localization is the **last**
+render step, applied to the effective chord: ``Bb`` → ``B`` (the classic swap),
+``B`` → ``H``, ``F#`` → ``Fis``, ``Eb`` → ``Es``. Quality/extensions are carried
+verbatim; the numerals are never localized. The localized labels appear in the
+HTML chord span text, the LaTeX ``\dmchord`` args, and the EPUB ``<pre>`` chord
+row across all three formats.
+
+.. song::
+
+   {title: German Song}
+
+   {start_of_verse}
+   [Bb]One [B]two
+   [F#]Three [Eb]four
+   {end_of_verse}

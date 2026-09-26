@@ -68,15 +68,43 @@
    margin: 0;
 }
 
-/* Each line is the positioning context for its chords, which sit above it. */
+/* Each line is a flow of chord-over-word COLUMNS. It is the reading-order
+   container; the per-column positioning context lives on .doxtr-col so each
+   chord sits over its OWN word, not the line's start edge. white-space:pre-wrap
+   preserves the reconstructed inter-word spacing (space text nodes between
+   columns) while still allowing the line to wrap on narrow viewports. */
 .doxtr-line {
-   position: relative;
    margin-block-start: 1.6em;
    line-height: 1.4;
    white-space: pre-wrap;
 }
 
-/* Chords: real text, non-selectable, positioned above the lyric line. */
+/* One chord-over-word column: the positioning context for its chord(s), which
+   sit absolutely above THIS column (this word) rather than the whole line. An
+   inline-block so columns flow horizontally in reading order and wrap as a
+   unit; vertical-align:baseline keeps the lyric words on the text baseline. */
+.doxtr-col {
+   position: relative;
+   display: inline-block;
+   vertical-align: baseline;
+   white-space: nowrap;
+}
+
+/* A placeholder cell for a standalone chord that sits over no lyric word (a
+   chord-only line): reserves column width, non-selectable so it never enters
+   the copyable lyric stream. */
+.doxtr-col-pad {
+   user-select: none;
+   -webkit-user-select: none;
+   -moz-user-select: none;
+   -ms-user-select: none;
+}
+
+/* Chords: real text, non-selectable, positioned above their column's word.
+   Absolute within the .doxtr-col context and pinned to the column's inline
+   start (logical properties only — CHUNK-3-4 RTL flips via dir="rtl" without a
+   rewrite). This is what places each chord over the word it precedes rather
+   than piling every chord at the line's left edge. */
 .doxtr-chord {
    position: absolute;
    inset-block-start: -1.2em;

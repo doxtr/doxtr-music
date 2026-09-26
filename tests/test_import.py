@@ -9,7 +9,7 @@ import doxtr_music
 
 def test_version_token():
     """__version__ is the single source-of-truth PEP 440 token."""
-    assert doxtr_music.__version__ == "0.1.0"
+    assert doxtr_music.__version__ == "0.1.1"
 
 
 class _FakeApp:
@@ -56,7 +56,7 @@ def test_setup_returns_contract_dict():
     assert {"version", "parallel_read_safe", "parallel_write_safe"}.issubset(
         meta.keys()
     )
-    assert meta["version"] == "0.1.0"
+    assert meta["version"] == "0.1.1"
     assert meta["parallel_read_safe"] is True
     assert meta["parallel_write_safe"] is True
 
@@ -87,7 +87,7 @@ def test_provenance_meta_concatenates_string():
     context = {}
     doxtr_music._add_provenance_meta(None, "index", "page.html", context, None)
     assert context["metatags"] == (
-        '<meta name="doxtr-music" content="0.1.0"/>\n'
+        '<meta name="doxtr-music" content="0.1.1"/>\n'
     )
 
     # Idempotent concatenation onto an existing string (never list append).

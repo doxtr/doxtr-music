@@ -280,15 +280,224 @@ def _depart_section(self, node):
 
 
 # ---------------------------------------------------------------------------
-# LineNode — position-context line box
+# LineNode — collect-then-render chord-over-word columns
 # ---------------------------------------------------------------------------
+#
+# A song line stores its chords and lyric words as SEPARATE column-ordered
+# streams under a LineNode (or a nested SingerSpanNode): all ChordNodes first,
+# then all LyricNodes (see ``build_nodes``). Emitting them in tree order with a
+# single ``inset-inline-start: 0`` would pile every chord at the line's left
+# edge (they'd all "smush" together). Instead — mirroring the LaTeX/EPUB
+# collect-then-render approach — the HTML visitor COLLECTS the line's chords and
+# lyric words (with their singer context) into a per-line buffer during child
+# visits and RENDERS the whole line in ``_depart_line`` as a flow of stacked
+# inline-block COLUMNS: each lyric word is a column, and a chord covering that
+# word's logical column sits absolutely-positioned above JUST that word (so the
+# chord aligns over the lyric it precedes). Inter-word spacing is reconstructed
+# from the column gaps (the CHUNK-1-3 authority; spacing is never stored).
+#
+# Copy-safety (LOCKED) is preserved: each chord is still a real, non-selectable
+# ``.doxtr-chord`` span (``user-select:none`` in CSS), DOM-adjacent to but
+# separate from its lyric word, so the COPY_SAFE_ORDER_HTML strip leaves the
+# lyric stream in logical order. Singer runs (CHUNK-4-2/4-3) still emit their
+# ``.doxtr-singer`` wrapper with the visible non-color cue.
+
 
 def _visit_line(self, node):
-    self.body.append('<div class="doxtr-line">')
+    # Fresh per-line collection buffer. ``items`` is a flat list of collected
+    # chords/lyrics in tree order, each tagged with the singer id in effect, so
+    # _depart_line can pair chords with words by column and re-wrap singer runs.
+    self._dm_html_line = {"items": []}
 
 
 def _depart_line(self, node):
+    buf = getattr(self, "_dm_html_line", None)
+    self._dm_html_line = None
+    self.body.append('<div class="doxtr-line">')
+    if buf is not None:
+        self.body.append(_render_html_line_flow(self, buf))
     self.body.append("</div>\n")
+
+
+def _current_html_singer(self):
+    """Return the innermost open singer id for the current line (or ``None``)."""
+    stack = getattr(self, "_dm_html_singer_stack", None)
+    return stack[-1] if stack else None
+
+
+def _render_html_line_flow(self, buf):
+    """Render one song line as chord-over-word columns, grouped by singer run.
+
+    Walks the line's lyric words in ascending logical ``column`` and emits, for
+    each word, a ``.doxtr-col`` inline-block wrapper holding the covering chord
+    (an absolutely-positioned ``.doxtr-chord`` span above) and the selectable
+    ``.doxtr-lyric`` word below. Chords with no covered word (a chord-only line,
+    or a trailing/leading chord that binds to no word) get their own column with
+    a non-breaking-space lyric placeholder so the chord still shows. Inter-word
+    spacing is reconstructed from column gaps. Adjacent words attributed to the
+    same singer are wrapped together in one ``.doxtr-singer`` run (carrying the
+    WCAG visible cue + SR label) so copy-safety and the CHUNK-4-2/4-3 markers
+    are preserved.
+    """
+    items = buf.get("items") or []
+    chords = [it for it in items if it["kind"] == "chord"]
+    lyrics = [it for it in items if it["kind"] == "lyric"]
+
+    # Build the ordered list of columns. Each column is
+    # ``(singer, chord_item_or_None, lyric_item_or_None)``.
+    columns = _pair_columns(chords, lyrics)
+    if not columns:
+        return ""
+    return _emit_columns(self, columns)
+
+
+def _pair_columns(chords, lyrics):
+    """Pair chords with the lyric word each sits over; return ordered columns.
+
+    A chord binds to the lyric word covering its column (``wcol <= col <
+    wcol+len``), else the nearest FOLLOWING word (the ``[G]Amazing`` layout).
+    Multiple chords over one word stack into that word's column (rare); a chord
+    binding to no word becomes a standalone chord-only column at its position.
+    Returns a list of ``(singer, [chord_items], lyric_item_or_None, column)``
+    sorted by logical column.
+    """
+    lyric_sorted = sorted(
+        lyrics, key=lambda it: (it["column"] if it["column"] is not None else 0)
+    )
+    # Map each chord to a target lyric index (or None → standalone column).
+    word_chords = {id(w): [] for w in lyric_sorted}
+    standalone = []
+    for ch in chords:
+        col = ch["column"]
+        target = None
+        if col is not None and lyric_sorted:
+            covering = following = None
+            for w in lyric_sorted:
+                wcol = w["column"]
+                if wcol is None:
+                    continue
+                wlen = max(len(w["text"]), 1)
+                if wcol <= col < wcol + wlen:
+                    covering = w
+                    break
+                if wcol >= col and following is None:
+                    following = w
+            target = covering or following
+        if target is not None:
+            word_chords[id(target)].append(ch)
+        else:
+            standalone.append(ch)
+
+    columns = []
+    for w in lyric_sorted:
+        columns.append(
+            (w["singer"], word_chords[id(w)], w,
+             w["column"] if w["column"] is not None else 0)
+        )
+    for ch in standalone:
+        columns.append(
+            (ch["singer"], [ch], None,
+             ch["column"] if ch["column"] is not None else 0)
+        )
+    columns.sort(key=lambda c: c[3])
+    return columns
+
+
+def _emit_columns(self, columns):
+    """Emit the column flow, grouping consecutive same-singer columns.
+
+    Inter-word spacing is reconstructed from the gap between a word's end column
+    and the next column's start column: a real space is placed BETWEEN columns
+    (as a plain text node, selectable, so the copied lyric stream keeps word
+    separation). Singer runs wrap the ``.doxtr-col`` groups.
+    """
+    out = []
+    run_singer = _SENTINEL = object()
+    prev_end = None
+    for singer, chord_items, lyric_item, column in columns:
+        # Open/close singer runs as the attribution changes.
+        if singer != run_singer:
+            if run_singer is not _SENTINEL and run_singer is not None:
+                out.append("</span>")
+            run_singer = singer
+            if singer is not None:
+                out.append(_open_singer_run(self, singer))
+        # Inter-word spacing (a plain, selectable space between columns).
+        if prev_end is not None:
+            gap = column - prev_end
+            out.append(" " if gap <= 0 else " " * gap)
+        out.append(_emit_column(self, chord_items, lyric_item))
+        text = lyric_item["text"] if lyric_item is not None else ""
+        prev_end = column + max(len(text), 1)
+    if run_singer is not _SENTINEL and run_singer is not None:
+        out.append("</span>")
+    return "".join(out)
+
+
+def _open_singer_run(self, singer):
+    """Return the opening ``.doxtr-singer`` markup + WCAG cues for a run.
+
+    Mirrors the CHUNK-4-3 singer wrapper: the ``data-singer`` hook, a VISIBLE
+    non-color cue (WCAG 1.4.1) and an SR-only label (WCAG 1.3.1/4.1.2), both
+    inside the stripped wrapper so the copied lyric stream excludes them.
+    """
+    from doxtr_music.a11y import (
+        VISUALLY_HIDDEN_STYLE,
+        singer_sr_label,
+        singer_visible_cue,
+    )
+
+    parts = ['<span class="doxtr-singer" data-singer="%s">' % self.attval(singer)]
+    cue = singer_visible_cue(singer)
+    if cue:
+        parts.append(
+            '<span class="doxtr-singer-cue" aria-hidden="true">%s</span>'
+            % _esc(self, cue)
+        )
+    sr = singer_sr_label(singer)
+    if sr:
+        parts.append(
+            '<span class="doxtr-sr-only" style="%s">%s</span>'
+            % (VISUALLY_HIDDEN_STYLE, _esc(self, sr))
+        )
+    return "".join(parts)
+
+
+def _emit_column(self, chord_items, lyric_item):
+    """Render one chord-over-word column: chord(s) stacked above the lyric word.
+
+    The ``.doxtr-col`` inline-block is the positioning context for its chords
+    (the CSS pins ``.doxtr-chord`` to the column's inline start, so a chord sits
+    over ITS OWN word rather than the whole line's left edge). A column with no
+    lyric word (a chord-only line / unbound chord) uses a non-breaking-space
+    placeholder so the column still reserves width for the chord.
+
+    Intra-word chords (e.g. ``[G]chari[D]ot`` — two chords over one word) are
+    offset horizontally by the chord's character position INSIDE the word so the
+    second chord sits over the syllable it precedes rather than stacking on top
+    of the first. The offset is a logical ``inset-inline-start`` in ``ch`` units
+    approximated from ``chord.column - word.column``; proportional lyric fonts
+    make this approximate (exact intra-word alignment is the monospace EPUB /
+    PDF job), but it keeps overlapping chords legible.
+    """
+    out = ['<span class="doxtr-col">']
+    word_col = None
+    if lyric_item is not None and lyric_item.get("column") is not None:
+        word_col = lyric_item["column"]
+    for ch in chord_items:
+        offset = None
+        ccol = ch.get("column")
+        if word_col is not None and ccol is not None and ccol > word_col:
+            offset = ccol - word_col
+        out.append(_chord_span_html(self, ch["node"], intra_word_offset=offset))
+    if lyric_item is not None:
+        out.append(_lyric_span_html(self, lyric_item["node"]))
+    else:
+        # Placeholder so the column has width for the standalone chord; the
+        # nbsp is non-selectable to keep the copied lyric stream clean.
+        out.append('<span class="doxtr-col-pad" aria-hidden="true">&#160;</span>')
+    out.append("</span>")
+    return "".join(out)
 
 
 # ---------------------------------------------------------------------------
@@ -301,41 +510,79 @@ def _visit_chord(self, node):
     # (CHUNK-3-4): roman-if-set (replace mode) else localize to the configured
     # chord system. Localization is the last render step, applied to the
     # effective (post-transpose) chord (CHUNK-3-2 contract).
+    from docutils.nodes import SkipNode
+
     from doxtr_music.engine.i18n import resolve_chord_display
 
-    chord = node.get("chord", "")
-    effective = node.get("transposed") or chord
-    display = resolve_chord_display(node, self.config)
     # A ``:chord:`` role (CHUNK-3-5) is ordinary readable prose text, NOT a
     # positioned song chord. It uses the distinct ``.doxtr-chord-inline`` class
     # (no absolute positioning / no ``user-select:none`` / no ``aria-hidden``)
     # so the song-chord CSS never leaks onto prose chords and CHUNK-4-3 need not
-    # touch role output.
+    # touch role output. Inline roles are emitted directly (never buffered into
+    # a line).
     if node.get("inline_role"):
+        chord = node.get("chord", "")
+        effective = node.get("transposed") or chord
+        display = resolve_chord_display(node, self.config)
         self.body.append(
             '<span class="doxtr-chord-inline" data-chord="%s"%s>%s</span>'
             % (self.attval(effective), _style_attr(node), _esc(self, display))
         )
         return
-    # The element stays a real, non-selectable .doxtr-chord span so the copy-safe
-    # DOM order is unaffected. ``data-chord`` keeps the effective English chord
-    # so tooling/tests can still recover the source chord behind a numeral or a
-    # localized glyph. Per-song typography rides an inline ``style`` (CHUNK-4-1).
-    #
-    # CHUNK-4-3 WCAG: swap the CHUNK-1-4 interim ``aria-hidden="true"`` for
-    # ``role="img"`` + ``aria-label`` (a bare generic span's aria-label is not
-    # reliably announced by NVDA/Chrome; role="img" gives an atomic accessible
-    # name and suppresses the redundant visible-text read). HTML relies on DOM
-    # proximity to the following lyric word, so the label is ``Chord: <display>``
-    # only (no ``, word: ...`` — that would duplicate the adjacent lyric read).
-    from doxtr_music.a11y import chord_aria_label
+    # A song chord: COLLECT it into the current line buffer (rendered in column
+    # order, paired with its lyric word, in _depart_line). Skip children.
+    buf = getattr(self, "_dm_html_line", None)
+    if buf is not None:
+        buf["items"].append({
+            "kind": "chord",
+            "node": node,
+            "column": node.get("column"),
+            "text": node.get("chord", ""),
+            "singer": _current_html_singer(self),
+        })
+        raise SkipNode
+    # Defensive: a song chord outside a LineNode (should not happen) — emit the
+    # positioned span directly so nothing is lost.
+    self.body.append(_chord_span_html(self, node))
 
+
+def _chord_span_html(self, node, intra_word_offset=None):
+    """Return the positioned, non-selectable ``.doxtr-chord`` span markup.
+
+    The element is a real, non-selectable ``.doxtr-chord`` span so the copy-safe
+    DOM order is unaffected. ``data-chord`` keeps the effective English chord so
+    tooling/tests can recover the source chord behind a numeral or a localized
+    glyph. Per-song typography rides an inline ``style`` (CHUNK-4-1).
+
+    ``intra_word_offset`` (int or ``None``) shifts a chord that sits over a
+    later syllable of a multi-chord word by that many ``ch`` from the column's
+    inline start (a logical offset, so it flips under ``dir="rtl"``). ``None``
+    leaves the chord at the column start (the common one-chord-per-word case).
+
+    CHUNK-4-3 WCAG: ``role="img"`` + ``aria-label`` give an atomic accessible
+    name and suppress the redundant visible-text read; DOM proximity to the
+    following lyric word means the label is ``Chord: <display>`` only.
+    """
+    from doxtr_music.a11y import chord_aria_label
+    from doxtr_music.engine.i18n import resolve_chord_display
+
+    chord = node.get("chord", "")
+    effective = node.get("transposed") or chord
+    display = resolve_chord_display(node, self.config)
     inner = _chord_inner_html(self, node, display)
-    self.body.append(
+    style = _style_attr(node)
+    if intra_word_offset:
+        # Merge the intra-word offset into the inline style (logical property).
+        decl = "inset-inline-start:%dch" % intra_word_offset
+        if style:
+            style = style[:-1] + ";" + decl + '"'  # splice before closing quote
+        else:
+            style = ' style="%s"' % decl
+    return (
         '<span class="doxtr-chord" data-chord="%s" role="img" aria-label="%s"%s>'
         '%s</span>'
         % (self.attval(effective), self.attval(chord_aria_label(display)),
-           _style_attr(node), inner)
+           style, inner)
     )
 
 
@@ -377,12 +624,29 @@ def _depart_chord(self, node):
 # ---------------------------------------------------------------------------
 
 def _visit_lyric(self, node):
-    text = node.astext()
-    self.body.append(
-        '<span class="doxtr-lyric"%s>%s</span>'
-        % (_style_attr(node), _esc(self, text))
-    )
+    # COLLECT the lyric word into the current line buffer (paired with its chord
+    # + reconstructed spacing in _depart_line). Skip children.
+    buf = getattr(self, "_dm_html_line", None)
+    if buf is not None:
+        buf["items"].append({
+            "kind": "lyric",
+            "node": node,
+            "column": node.get("column"),
+            "text": node.astext(),
+            "singer": _current_html_singer(self),
+        })
+        raise SkipNode
+    # Defensive: a lyric outside a LineNode (should not happen) — emit directly.
+    self.body.append(_lyric_span_html(self, node))
     raise SkipNode
+
+
+def _lyric_span_html(self, node):
+    """Return the selectable ``.doxtr-lyric`` span markup (the only copyable text)."""
+    return (
+        '<span class="doxtr-lyric"%s>%s</span>'
+        % (_style_attr(node), _esc(self, node.astext()))
+    )
 
 
 def _depart_lyric(self, node):  # pragma: no cover - SkipNode short-circuits
@@ -394,40 +658,31 @@ def _depart_lyric(self, node):  # pragma: no cover - SkipNode short-circuits
 # ---------------------------------------------------------------------------
 
 def _visit_singer(self, node):
-    from doxtr_music.a11y import (
-        VISUALLY_HIDDEN_STYLE,
-        singer_sr_label,
-        singer_visible_cue,
-    )
-
-    singer = node.get("singer", "")
-    self.body.append(
-        '<span class="doxtr-singer" data-singer="%s">' % self.attval(singer)
-    )
-    # CHUNK-4-3 WCAG 1.4.1 (Use of Color): a VISIBLE non-color cue so sighted
-    # color-blind users distinguish singer runs without relying on color. It is
-    # a real DOM element INSIDE the .doxtr-singer wrapper, which the COPY_SAFE
-    # strip removes — so the copied lyric stream excludes it (copy-neutral).
-    # No ``::before`` on any lyric element (that pollutes the copy buffer).
-    cue = singer_visible_cue(singer)
-    if cue:
-        self.body.append(
-            '<span class="doxtr-singer-cue" aria-hidden="true">%s</span>'
-            % _esc(self, cue)
-        )
-    # An ADDITIONAL SR-only label (WCAG 1.3.1 / 4.1.2), also inside the stripped
-    # wrapper. Not the 1.4.1 mechanism (which must be visible) — a layered
-    # affordance. Visually hidden without position:absolute (EPUB parity habit).
-    sr = singer_sr_label(singer)
-    if sr:
-        self.body.append(
-            '<span class="doxtr-sr-only" style="%s">%s</span>'
-            % (VISUALLY_HIDDEN_STYLE, _esc(self, sr))
-        )
+    # A singer span is a positional attribution change within a line. Because the
+    # line's chords/lyrics are COLLECTED and rendered in _depart_line (paired by
+    # column, grouped into singer runs there), the singer visitor only tracks
+    # the CURRENT singer id on a small stack so each collected chord/lyric is
+    # tagged with its attribution. It emits no inline markup of its own — the
+    # ``.doxtr-singer`` wrapper + WCAG cues are emitted by ``_open_singer_run``
+    # at render time (copy-safety + CHUNK-4-2/4-3 markers preserved).
+    #
+    # A singer span outside a LineNode (should not happen) falls back to the
+    # legacy inline wrapper so nothing is lost.
+    stack = getattr(self, "_dm_html_singer_stack", None)
+    if stack is None:
+        stack = self._dm_html_singer_stack = []
+    stack.append(node.get("singer") or None)
+    if getattr(self, "_dm_html_line", None) is None:
+        self.body.append(_open_singer_run(self, node.get("singer") or ""))
+        node["_dm_html_inline_singer"] = True
 
 
 def _depart_singer(self, node):
-    self.body.append("</span>")
+    stack = getattr(self, "_dm_html_singer_stack", None)
+    if stack:
+        stack.pop()
+    if node.get("_dm_html_inline_singer"):
+        self.body.append("</span>")
 
 
 # ---------------------------------------------------------------------------

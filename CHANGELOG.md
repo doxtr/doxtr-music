@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.1.1
+
+### Bug Fixes
+
+- HTML: fixed chords piling at the line's left edge. A song line's chords and
+  lyric words are stored as separate column-ordered streams, so emitting them
+  in tree order pinned every chord to the line start. The HTML builder now
+  collects the line's chords and lyric words and renders the line as a flow of
+  stacked inline-block columns — each chord is absolutely positioned above just
+  the word it precedes (with an intra-word offset for multi-chord words), and
+  inter-word spacing is reconstructed from the column gaps. Copy-safety and the
+  multi-singer WCAG cues are preserved.
+
 ## 0.1.0 — 2026-09-21
 
 ### New Features

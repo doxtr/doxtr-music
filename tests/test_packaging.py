@@ -55,7 +55,7 @@ def test_console_script_entry_point():
 
 def test_version_is_single_source_and_release_literal():
     # A release literal (no ``.dev``/``-dev`` suffix), single source of truth.
-    assert doxtr_music.__version__ == "0.1.0"
+    assert doxtr_music.__version__ == "0.1.1"
     assert "dev" not in doxtr_music.__version__
 
 
